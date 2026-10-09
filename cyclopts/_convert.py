@@ -379,9 +379,7 @@ def _validate_json_extra_keys(
         )
 
 
-def _convert_json_dict(
-    type_: Any, token: "Token", name_transform: Callable[[str], str], json_name: str | None = None
-):
+def _convert_json_dict(type_: Any, token: "Token", name_transform: Callable[[str], str], json_name: str | None = None):
     """Convert a JSON-object token into ``type_`` via the Argument machinery.
 
     Building a throwaway :class:`ArgumentCollection` for ``type_`` reuses the same
@@ -411,7 +409,9 @@ def _convert_json_dict(
 
     # Reuse the originating option name so nested error messages read ``--outer.field``.
     name = token.keyword if token.keyword and token.keyword.startswith("-") else (json_name or "--json")
-    field_info = FieldInfo(names=(name.lstrip("-"),), kind=FieldInfo.POSITIONAL_OR_KEYWORD, annotation=type_, required=True)
+    field_info = FieldInfo(
+        names=(name.lstrip("-"),), kind=FieldInfo.POSITIONAL_OR_KEYWORD, annotation=type_, required=True
+    )
     collection = ArgumentCollection._from_type(
         field_info,
         (),
