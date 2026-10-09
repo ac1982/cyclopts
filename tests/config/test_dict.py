@@ -1080,3 +1080,139 @@ def test_config_dict_root_non_mapping_node_with_root_keys():
         app([], exit_on_error=False)
 
     assert str(e.value) == 'Configuration in "dict" must be a mapping, but got int.'
+
+
+@pytest.mark.parametrize(
+    "hint, value",
+    [
+        (dict[str, dict[str, int]], {"k": {}}),
+        (dict[str, list[int]], {"k": []}),
+        (dict[str, dict[str, int]], {"k": {"a": 1}, "j": {}}),
+    ],
+)
+def test_config_dict_empty_container_inside_dict(hint, value):
+    """An empty container under a key binds as that key's value instead of replacing the whole dict."""
+    app = App(config=Dict({"x": value}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    assert app([]) == value
+
+
+def test_config_dict_empty_dict_inside_dict_of_scalars():
+    """An empty dict where a dict value must be a scalar is a clean coercion error."""
+    from cyclopts import CoercionError
+
+    app = App(config=Dict({"x": {"k": 1, "j": {}}}), result_action="return_value")
+
+    @app.default
+    def main(x: dict[str, int]):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+def test_config_dict_empty_dict_value_list_of_dataclass():
+    """``x = {}`` on a list of dataclasses binds a single all-defaults element, like ``--x={}`` does."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Options:
+        threshold: int = 5
+
+    app = App(config=Dict({"x": {}}), result_action="return_value")
+
+    @app.default
+    def main(x: list[Options]):
+        return x
+
+    assert app([]) == [Options()]
+
+
+def test_config_dict_empty_dict_value_list_of_pydantic():
+    """``x = {}`` on a list of pydantic models binds a single all-defaults element, like ``--x={}`` does."""
+    pydantic = pytest.importorskip("pydantic")
+
+    class Options(pydantic.BaseModel):
+        threshold: int = 5
+
+    app = App(config=Dict({"x": {}}), result_action="return_value")
+
+    @app.default
+    def main(x: list[Options]):
+        return x
+
+    assert app([]) == [Options()]
+
+
+def test_config_dict_empty_list_value_dataclass():
+    """``x = []`` on a dataclass is an error instead of being bound into the first field."""
+    from dataclasses import dataclass
+
+    from cyclopts import CoercionError
+
+    @dataclass
+    class Options:
+        threshold: int = 5
+
+    app = App(config=Dict({"x": []}), result_action="return_value")
+
+    @app.default
+    def main(x: Options):
+        return x
+
+    with pytest.raises(CoercionError):
+        app([], exit_on_error=False)
+
+
+@pytest.mark.parametrize(
+    "hint, expected",
+    [
+        (tuple[int, ...], ()),
+        (set[int], set()),
+        (frozenset[int], frozenset()),
+    ],
+)
+def test_config_dict_empty_list_value_iterables(hint, expected):
+    """``x = []`` binds an empty container for every iterable kind, like it does for ``list``."""
+    app = App(config=Dict({"x": []}), result_action="return_value")
+
+    @app.default
+    def main(x: hint):  # pyright: ignore[reportInvalidTypeForm]
+        return x
+
+    assert app([]) == expected
+
+
+@pytest.mark.parametrize(
+    "element, expected_name",
+    [
+        ({"port": 1}, "--servers.host"),
+        ({"host": "a", "port": "abc"}, "[servers][port]"),
+    ],
+)
+def test_config_dict_list_of_dataclass_error_names_parameter(element, expected_name):
+    """An error inside a list element from config names the real parameter, not a placeholder."""
+    from dataclasses import dataclass
+
+    from cyclopts import CycloptsError
+
+    @dataclass
+    class Server:
+        host: str
+        port: int = 80
+
+    app = App(config=Dict({"servers": [element]}), result_action="return_value")
+
+    @app.default
+    def main(servers: list[Server]):
+        return servers
+
+    with pytest.raises(CycloptsError) as e:
+        app([], exit_on_error=False)
+
+    assert expected_name in str(e.value)
+    assert "json" not in str(e.value)
