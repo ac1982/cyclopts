@@ -742,8 +742,10 @@ class Argument:
 
         if self.parameter.converter:
             converter = self.parameter.resolve_converter(self.hint)
-        elif converter is None:
-            converter = partial(convert, name_transform=self.parameter.name_transform)
+        # Children build their own default converter so it carries their own name.
+        child_converter = converter
+        if converter is None:
+            converter = partial(convert, name_transform=self.parameter.name_transform, _json_name=self.name)
 
         assert converter is not None  # Ensure converter is set at this point
 
@@ -908,7 +910,7 @@ class Argument:
                 # than by the (cross-branch, over-counting) static ``child.required``.
                 child_required = child.keys[-1] in active_required if active_required is not None else child.required
                 if child.has_tokens:
-                    data[child.keys[-1]] = child.convert_and_validate(converter=converter)
+                    data[child.keys[-1]] = child.convert_and_validate(converter=child_converter)
                 elif child_required:
                     obj = data
                     for k in child.keys:
